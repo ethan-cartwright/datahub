@@ -1,0 +1,33 @@
+source:
+    type: snowflake
+    config:
+        include_table_lineage: true
+        password: 'E*s7oA6mDwNA8Q'
+        account_id: xaa48144
+        role: accountadmin
+        profiling:
+            enabled: false
+        include_view_lineage: true
+        warehouse: COMPUTE_WH
+        username: swaroop
+        database_pattern:
+            allow:
+                - DATAHUB_COMMUNITY
+        profile_pattern:
+            deny:
+                - ^long_tail_companions.adoption.pet_profiles$
+                - ^long_tail_companions.analytics.pet_details$
+        table_pattern:
+            allow:
+                - '.*MESSAGE_REPLY_PINNED_TO.*'
+        schema_pattern:
+            allow:
+                - SLACK
+        classification:
+            enabled: true
+            info_type_to_term:
+                Email_Address: 006399703afe918c680cea06f5faaf19
+            classifiers:
+                -
+                    type: datahub
+                    config: {confidence_level_threshold: 0.7, info_types_config: {Email_Address: {prediction_factors_and_weights: {name: 0.8, description: 0, datatype: 0, values: 0}, name: {regex: [channel_id]}, description: {regex: [channel_id]}, datatype: {type: [str]}, values: {prediction_type: regex, regex: [channel_id]}}}, exclusion_config: {name: {regex: ["channel_id"]}}}

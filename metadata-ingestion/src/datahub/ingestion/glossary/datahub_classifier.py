@@ -1,17 +1,27 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional
-
+import re
+import logging
 from datahub_classify.helper_classes import ColumnInfo
 from datahub_classify.infotype_predictor import predict_infotypes
 from datahub_classify.reference_input import input1 as default_config
 from pydantic import validator
 from pydantic.fields import Field
 
-from datahub.configuration.common import ConfigModel
+from datahub.configuration.common import ConfigModel, PermissiveConfigModel
 from datahub.ingestion.glossary.classifier import Classifier
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class NameFactorConfig(ConfigModel):
+    regex: List[str] = Field(
+        default=[".*"],
+        description="List of regex patterns the column name follows for the info type",
+    )
+
+
+class ExclusionNameConfig(ConfigModel):
     regex: List[str] = Field(
         default=[".*"],
         description="List of regex patterns the column name follows for the info type",
@@ -58,6 +68,21 @@ class PredictionFactorsAndWeights(ConfigModel):
     Values: float = Field(alias="values")
 
 
+class ExclusionConfig(ConfigModel):
+    class Config:
+        allow_population_by_field_name = True
+
+    Name: Optional[ExclusionNameConfig] = Field(default=None, alias="name")
+
+    Description: Optional[DescriptionFactorConfig] = Field(
+        default=None, alias="description"
+    )
+
+    Datatype: Optional[DataTypeFactorConfig] = Field(default=None, alias="datatype")
+
+    Values: Optional[ValuesFactorConfig] = Field(default=None, alias="values")
+
+
 class InfoTypeConfig(ConfigModel):
     class Config:
         allow_population_by_field_name = True
@@ -94,6 +119,10 @@ class DataHubClassifierConfig(ConfigModel):
     )
     info_types_config: Dict[str, InfoTypeConfig] = Field(
         default=DEFAULT_CLASSIFIER_CONFIG,
+        description="Configuration details for infotypes. See [reference_input.py](https://github.com/acryldata/datahub-classify/blob/main/datahub-classify/src/datahub_classify/reference_input.py) for default configuration.",
+    )
+    exclusion_config: Dict[str, ExclusionConfig] = Field(
+        default=None,
         description="Configuration details for infotypes. See [reference_input.py](https://github.com/acryldata/datahub-classify/blob/main/datahub-classify/src/datahub_classify/reference_input.py) for default configuration.",
     )
     minimum_values_threshold: int = Field(
@@ -173,5 +202,14 @@ class DataHubClassifier(Classifier):
             infotypes=self.config.info_types,
             minimum_values_threshold=self.config.minimum_values_threshold,
         )
+        # New Exclusion Logic
+        excluded_columns = set()
+        for pattern in self.config.exclusion_config.get("names", []):
+            excluded_columns.update(
+                col.name for col in columns if re.match(pattern, col.name)
+            )
+
+        # Filter out excluded columns
+        columns = [col for col in columns if col.name not in excluded_columns]
 
         return columns
