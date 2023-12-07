@@ -204,7 +204,7 @@ class DataHubClassifier(Classifier):
         )
         # New Exclusion Logic
         excluded_columns = set()
-        for pattern in self.config.exclusion_config.get("names", []):
+        for pattern in self.config.exclusion_config.get("name", []):
             excluded_columns.update(
                 col.name for col in columns if re.match(pattern, col.name)
             )
