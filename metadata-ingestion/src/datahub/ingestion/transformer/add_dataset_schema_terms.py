@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, Dict, List, Optional, cast
 
 import datahub.emitter.mce_builder as builder
@@ -18,6 +19,8 @@ from datahub.metadata.schema_classes import (
     SchemaFieldClass,
     SchemaMetadataClass,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AddDatasetSchemaTermsConfig(TransformerSemanticsConfigModel):
@@ -45,16 +48,24 @@ class AddDatasetSchemaTerms(DatasetSchemaMetadataTransformer):
     def extend_field(
         self, schema_field: SchemaFieldClass, server_field: Optional[SchemaFieldClass]
     ) -> SchemaFieldClass:
+        logger.debug("Inside extend_field")
         all_terms = self.config.get_terms_to_add(schema_field.fieldPath)
         if len(all_terms) == 0:
             # return input schema field as there is no terms to add
             return schema_field
+
+        logger.debug(f"all terms: {all_terms}")
 
         # Add existing terms if user want to keep them
         if (
             schema_field.glossaryTerms is not None
             and self.config.replace_existing is False
         ):
+            existing_terms = [
+                (term.urn, term.description)
+                for term in schema_field.glossaryTerms.terms
+            ]
+            logger.debug(f"Existing terms in schema field: {existing_terms}")
             all_terms.extend(schema_field.glossaryTerms.terms)
 
         terms_to_add: List[GlossaryTermAssociationClass] = []
@@ -63,22 +74,26 @@ class AddDatasetSchemaTerms(DatasetSchemaMetadataTransformer):
             # Go for patch
             server_terms = server_field.glossaryTerms.terms
             server_term_urns = [term.urn for term in server_terms]
+            logger.debug(f"Server term urns: {server_term_urns}")
+
             for term in all_terms:
                 if term.urn not in server_term_urns:
                     terms_to_add.append(term)
+                else:
+                    logger.debug(
+                        f"Skipping term already present in server terms: {term.urn}"
+                    )
+        else:
+            logger.debug("No server terms found, adding all initial terms.")
 
+        logger.debug(f"server_terms: {server_terms}")
+        logger.debug(f"terms to add: {terms_to_add}")
         # Set terms_to_add to all_terms if server terms were not present
         if len(terms_to_add) == 0:
             terms_to_add = all_terms
-
-        new_glossary_terms = []
-        new_glossary_terms.extend(server_terms)
-        new_glossary_terms.extend(terms_to_add)
-
-        unique_gloseary_terms = []
-        for term in new_glossary_terms:
-            if term not in unique_gloseary_terms:
-                unique_gloseary_terms.append(term)
+            logger.debug(
+                "No new terms to add based on server comparison, defaulting to all initial terms."
+            )
 
         new_glossary_term = GlossaryTermsClass(
             terms=[],
@@ -88,9 +103,14 @@ class AddDatasetSchemaTerms(DatasetSchemaMetadataTransformer):
                 time=builder.get_sys_time(), actor="urn:li:corpUser:restEmitter"
             ),
         )
-        new_glossary_term.terms.extend(unique_gloseary_terms)
+        new_glossary_term.terms.extend(terms_to_add)
+        new_glossary_term.terms.extend(server_terms)
+        logger.debug(
+            f"Final terms being added: {[term.urn for term in new_glossary_term.terms]}"
+        )
 
         schema_field.glossaryTerms = new_glossary_term
+
         return schema_field
 
     def transform_aspect(
